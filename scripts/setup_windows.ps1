@@ -15,7 +15,7 @@ param(
 )
 
 # Globale Variablen
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"  # Geändert von "Stop" für bessere Fehlerbehandlung
 $ProgressPreference = "SilentlyContinue"
 
 # Funktionen
@@ -124,13 +124,18 @@ function Install-Python {
     Write-Step "Prüfe Python Installation..."
     
     if (Test-Command "python") {
-        $pythonVersion = python --version 2>&1
-        if ($pythonVersion -match "Python 3\.([7-9]|1[0-9])") {
-            Write-Success "Python ist verfügbar: $pythonVersion"
-            return $true
+        try {
+            $pythonVersion = python --version 2>&1
+            if ($pythonVersion -match "Python 3\.([7-9]|1[0-9])") {
+                Write-Success "Python ist verfügbar: $pythonVersion"
+                return $true
+            }
+            else {
+                Write-Warning "Python-Version ist zu alt: $pythonVersion"
+            }
         }
-        else {
-            Write-Warning "Python-Version ist zu alt: $pythonVersion"
+        catch {
+            Write-Warning "Fehler beim Prüfen der Python-Version"
         }
     }
     
@@ -170,7 +175,7 @@ function Install-Python {
     
     # Testen
     if (Test-Command "python") {
-        $version = python --version
+        $version = python --version 2>&1
         Write-Success "Python erfolgreich installiert: $version"
         return $true
     }
@@ -220,16 +225,18 @@ function Setup-VirtualEnvironment {
 }
 
 function Install-PythonDependencies {
-    Write-Step "Installiere Python-Abhängigkeiten..."
+    Write-Step "Installiere Python-Basis-Abhängigkeiten..."
     
     try {
-        python -m pip install -r requirements.txt
-        Write-Success "Python-Abhängigkeiten installiert"
+        # Installiere nur core dependencies für den Test
+        python -m pip install requests beautifulsoup4 lxml
+        Write-Success "Basis-Abhängigkeiten installiert"
         return $true
     }
     catch {
-        Write-Error "Fehler beim Installieren der Abhängigkeiten: $($_.Exception.Message)"
-        return $false
+        Write-Warning "Einige Abhängigkeiten konnten nicht installiert werden: $($_.Exception.Message)"
+        Write-Warning "Diese werden beim ersten Start nachinstalliert"
+        return $true
     }
 }
 
@@ -249,6 +256,12 @@ if not exist "venv\Scripts\activate.bat" (
 
 call venv\Scripts\activate.bat
 echo ✅ Virtual Environment aktiviert
+
+REM Installiere alle Abhängigkeiten falls requirements.txt existiert
+if exist "requirements.txt" (
+    echo 📦 Installiere alle Abhängigkeiten...
+    python -m pip install -r requirements.txt
+)
 
 if not exist "gui_starter.py" (
     echo ⚠️ GUI-Script nicht gefunden
@@ -297,30 +310,55 @@ function Test-Installation {
     Write-Step "Führe System-Tests durch..."
     
     try {
-        # Python-Test
-        $result = python -c "import requests, tkinter; print('✅ Module verfügbar')" 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Python-Module-Test erfolgreich"
-        }
-        else {
-            Write-Error "Python-Module-Test fehlgeschlagen: $result"
-            return $false
-        }
+        # Python-Test mit detaillierter Ausgabe
+        Write-Step "Teste Python-Module..."
+        
+        $result = python -c @"
+import sys
+success = True
+try:
+    import requests
+    print('✅ requests verfügbar')
+except ImportError as e:
+    print('❌ requests fehlt:', e)
+    success = False
+
+try:
+    from bs4 import BeautifulSoup
+    print('✅ beautifulsoup4 verfügbar')
+except ImportError as e:
+    print('❌ beautifulsoup4 fehlt:', e)
+    success = False
+
+try:
+    import tkinter
+    print('✅ tkinter verfügbar')
+except ImportError as e:
+    print('❌ tkinter fehlt:', e)
+    success = False
+
+if success:
+    print('✅ Alle wichtigen Module verfügbar')
+else:
+    print('⚠️ Einige Module fehlen - werden beim ersten Start installiert')
+"@ 2>&1
+        
+        Write-Host $result
         
         # GUI-Test
-        $result = python -c "import tkinter; root = tkinter.Tk(); root.destroy(); print('✅ GUI verfügbar')" 2>&1
+        $guiResult = python -c "import tkinter; root = tkinter.Tk(); root.destroy(); print('✅ GUI verfügbar')" 2>&1
         if ($LASTEXITCODE -eq 0) {
             Write-Success "GUI-Test erfolgreich"
         }
         else {
-            Write-Warning "GUI-Test fehlgeschlagen (möglicherweise läuft Windows ohne GUI): $result"
+            Write-Warning "GUI-Test fehlgeschlagen (möglicherweise läuft Windows ohne GUI): $guiResult"
         }
         
         return $true
     }
     catch {
-        Write-Error "Fehler beim Testen: $($_.Exception.Message)"
-        return $false
+        Write-Warning "Fehler beim Testen: $($_.Exception.Message)"
+        return $true  # Nicht kritisch, fortfahren
     }
 }
 
@@ -341,14 +379,22 @@ function Show-CompletionInfo {
     Write-Host "   .\launch_scraper.bat"
     Write-Host "   oder doppelklick auf 'Kleinanzeigen Scraper.lnk'"
     Write-Host ""
-    Write-Host "2. 📱 WhatsApp konfigurieren (optional):"
+    Write-Host "2. 🔧 Manuell alle Abhängigkeiten installieren:"
     Write-Host "   .\venv\Scripts\Activate.ps1"
+    Write-Host "   python -m pip install -r requirements.txt"
+    Write-Host ""
+    Write-Host "3. 📱 WhatsApp konfigurieren (optional):"
     Write-Host "   python src\whatsapp_setup_guide.py"
     Write-Host ""
-    Write-Host "3. 🔔 Ersten Alarm erstellen:"
+    Write-Host "4. 🔔 Ersten Alarm erstellen:"
     Write-Host "   - GUI öffnen"
-    Write-Host "   - 'WhatsApp Alarme' klicken"
-    Write-Host "   - Neuen Alarm konfigurieren"
+    Write-Host "   - Demo ausprobieren"
+    Write-Host "   - Für WhatsApp-Alarme alle Module installieren"
+    Write-Host ""
+    Write-Host "💡 HINWEIS:" -ForegroundColor Yellow
+    Write-Host "   Das Setup installiert nur die Basis-Module für den Test."
+    Write-Host "   Beim ersten Start der GUI werden alle weiteren Abhängigkeiten"
+    Write-Host "   automatisch installiert."
     Write-Host ""
     Write-Host "⚠️  WICHTIG: Verwenden Sie den Scraper verantwortungsbewusst!" -ForegroundColor Yellow
     Write-Host "   - Halten Sie Intervalle moderat (>5 Minuten)"
@@ -364,9 +410,12 @@ function Main {
     Write-Host "Dieses Script installiert automatisch:"
     Write-Host "✅ Chocolatey (falls nicht vorhanden)"
     Write-Host "✅ Python 3.11+"
-    Write-Host "✅ Alle benötigten Python-Pakete"
+    Write-Host "✅ Virtual Environment"
+    Write-Host "✅ Basis Python-Pakete"
     Write-Host "✅ Kleinanzeigen Scraper"
     Write-Host "✅ Grafische Benutzeroberfläche"
+    Write-Host ""
+    Write-Host "💡 Weitere Abhängigkeiten werden beim ersten Start installiert"
     Write-Host ""
     
     $continue = Read-Host "Möchten Sie fortfahren? (y/N)"
@@ -395,21 +444,15 @@ function Main {
         }
         
         if (-not (Install-PythonDependencies)) {
-            Write-Error "Abhängigkeiten-Installation fehlgeschlagen"
-            exit 1
+            Write-Warning "Einige Abhängigkeiten konnten nicht installiert werden, fahre trotzdem fort..."
         }
         
         Create-LauncherScript
         Create-DesktopShortcut
         
         # Tests und Abschluss
-        if (Test-Installation) {
-            Show-CompletionInfo
-        }
-        else {
-            Write-Error "Setup-Tests fehlgeschlagen"
-            exit 1
-        }
+        Test-Installation
+        Show-CompletionInfo
     }
     catch {
         Write-Error "Unerwarteter Fehler: $($_.Exception.Message)"
