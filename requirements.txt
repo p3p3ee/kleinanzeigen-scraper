@@ -1,0 +1,25 @@
+# Core Dependencies
+requests>=2.25.1
+beautifulsoup4>=4.9.3
+lxml>=4.6.3
+
+# GUI (tkinter is built into Python)
+
+# Optional: WhatsApp APIs
+twilio>=7.0.0
+
+# Optional: Flask für Web API
+flask>=2.0.1
+
+# Optional: Data Analysis
+pandas>=1.3.0
+matplotlib>=3.4.0
+
+# Development Dependencies
+pytest>=6.0.0
+black>=21.0.0
+flake8>=3.9.0
+
+# Package Management
+setuptools>=50.0.0
+wheel>=0.36.0
